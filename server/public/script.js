@@ -6,6 +6,9 @@ const models = {
 	"MAIN_BACKGROUND": {
 		model: null
 	},
+	"MAIN_PLAYER_MODEL": {
+		model: null
+	},
 	"TOP_RIGHT_PIPE_BLOCK": {
 		markup: "b",
 		model: null,
@@ -120,11 +123,11 @@ const game = {
 	defaultSize: 0, // FIXME
 	player: {
 		speed: 15,
-		pos: {
-			x: 0,
-			y: 0
-		},
-		controls: {}
+		object: null
+	},
+	cameraPos: {
+		x: 0,
+		y: null
 	}
 }
 
@@ -135,7 +138,7 @@ game_server.emit("READY_TO_PLAY_STATUS", true);
 game_server.on("RESPONSE_GAME_DATA", data => {
 	game.map = data.map;
 	game.initialized = true;
-	game.defaultSize = innerHeight / data.arrHeight;
+	game.defaultSize = innerHeight / data.arrHeight; // // (innerHeight - 100) to add status dock
 });
 
 // Classes
@@ -174,9 +177,67 @@ class Block extends Element {
 	}
 }
 
+class Creature {
+	constructor(health, pos, model, size) {
+		this.health = health;
+		this.model = model;
+
+		this.size = size;
+		this.pos = pos;
+
+		this.gravity = 1;
+		this.velocity = 0;
+	}
+
+	fall() {
+		this.velocity += this.gravity;
+		this.pos.y += this.velocity;
+	}
+	// Health, and other stuff for heros, monsters
+}
+
+class Hero extends Creature {
+	constructor(id, model, pos, isClient) {
+		super(120, pos, model, game.defaultSize);
+
+		this.socketID = id;
+		this.isClient = isClient;
+		this.speed = game.player.speed;
+		this.controls = {};
+	}
+
+	render() {
+		image(
+			this.model,
+			this.pos.x,
+			this.pos.y,
+			this.size,
+			this.size
+		);
+	}
+	// Hero skills, stats
+}
+
+class MainPlayer extends Hero {
+	constructor() {
+		super(
+			0,
+			models["MAIN_PLAYER_MODEL"].model,
+			{ x: 50, y: 50 },
+			true
+		);
+	}
+
+	control(keyCode, isPressed) {
+		this.controls[keyCode] = isPressed;
+	}
+}
+
 // INIT
 function preload() {
 	models["MAIN_BACKGROUND"].model         = loadImage('./models/background.png');
+
+	models["MAIN_PLAYER_MODEL"].model       = loadImage('./models/players/main.png');
 
 	models["TOP_RIGHT_PIPE_BLOCK"].model    = loadImage('./models/blocks/1.png');
 	models["TOP_FORK_PIPE_BLOCK"].model     = loadImage('./models/blocks/2.png');
@@ -201,8 +262,6 @@ function preload() {
 	models["QUESTION_LIGHT_BLOCK"].model    = loadImage('./models/blocks/21.png');
 }
 
-let _x = 0;
-
 function setup() {
 	createCanvas(innerWidth - .5, innerHeight - .5);
 }
@@ -221,17 +280,20 @@ function draw() {
 	blocks = [];
 
 	// Fill arrays
-	game.map.forEach((io, ik) => {
-		io = io.split("")
+	game.map.forEach((io, ik) => { // XXX
+		io = io.split("");
 
 		io.forEach((ia, il) => {
 			ia = ia.toLowerCase();
 
 			if(ia === "o") return;
 
+			let aa = Object.keys(models).find(io => models[io].markup === ia);
+			if(!aa) return;
+
 			blocks.push(new Block(
-				Object.keys(models).find(io => models[io].markup === ia),
-				il * game.defaultSize - _x,
+				aa,
+				il * game.defaultSize - game.cameraPos.x,
 				ik * game.defaultSize
 			));
 		});
@@ -241,14 +303,20 @@ function draw() {
 	blocks.forEach(io => {
 		io.render();
 	});
+
+	// Initialize client
+	game.player.object = new MainPlayer();
+	game.player.object.render();
 }
 
 function keyPressed() {
-	game.player.controls[keyCode] = true;
-	if(key === 'd') _x += 75;
-	else if(key === 'a') _x -= 75;
+	if(!game.initialized) return;
+
+	game.player.object.control(keyCode, true);
 }
 
 function keyReleased() {
-	game.player.controls[keyCode] = false;
+	if(!game.initialized) return;
+
+	game.player.object.control(keyCode, false);
 }
