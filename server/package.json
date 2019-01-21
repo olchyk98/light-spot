@@ -1,0 +1,27 @@
+{
+  "name": "light-spot-game-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olchyk98/light-spot.git"
+  },
+  "keywords": [
+    "socket.io"
+  ],
+  "author": "oles",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/olchyk98/light-spot/issues"
+  },
+  "homepage": "https://github.com/olchyk98/light-spot#readme",
+  "dependencies": {
+    "express": "^4.16.4",
+    "socket.io": "^2.2.0"
+  }
+}
