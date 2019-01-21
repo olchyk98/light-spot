@@ -210,12 +210,12 @@ function setup() {
 function draw() {
 	background(0);
 	if(!game.initialized) return;
-	image(
-		models["MAIN_BACKGROUND"].model,
-		0, 0,
-		width,
-		height
-	);
+	// image(
+	// 	models["MAIN_BACKGROUND"].model,
+	// 	0, 0,
+	// 	width,
+	// 	height
+	// );
 
 	// Clear arrays
 	blocks = [];
@@ -225,6 +225,8 @@ function draw() {
 		io = io.split("")
 
 		io.forEach((ia, il) => {
+			ia = ia.toLowerCase();
+
 			if(ia === "o") return;
 
 			blocks.push(new Block(
