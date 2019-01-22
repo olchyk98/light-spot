@@ -78,7 +78,7 @@ const maps = [
 
 // Game data
 const players = [];
-const map = maps[0];
+const map = Array.from(maps[0]);
 
 // Easy methods
 function _getGamers(currentID) {
@@ -128,6 +128,15 @@ io.on('connection', socket => {
 			casterID: data.casterID
 		});
 	});
+
+	// Someone destroyed block
+	socket.on("GAME_DESTROY_BLOCK", ({ x, y }) => {
+		// XXX: Shit way to do that.
+
+		let a = map[y].split("");
+		a[x] = 'o';
+		map[y] = a.join("");
+	})
 
 	// Pull user on disconnect
 	socket.on('disconnect', () => {

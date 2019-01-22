@@ -1,7 +1,7 @@
 // ----- /*
 /*
 /*	Iceball > detectObstacles > touch tester -> It should send a new packet to the game server.
-/*
+/*	Receive and re-render the new map on "GAME_DESTROY_BLOCK" server event
 /*
 /*
 /*
@@ -258,7 +258,7 @@ class Element {
 }
 
 class Block extends Element {
-	constructor(model, posX, posY, indexX) {
+	constructor(model, posX, posY, indexX, indexY) {
 		super(game.defaultSize, { x: posX, y: posY });
 
 		this.blockStyle = models[model].style;
@@ -267,6 +267,8 @@ class Block extends Element {
 		this.modelName = model;
 
 		this.indexX = indexX;
+		this.indexY = indexY;
+
 		this.visible = true;
 	}
 
@@ -369,6 +371,11 @@ class Iceball extends Bullet {
 					done = true;
 					if(io.blockStyle === "PIPE_STYLE") {
 						io.hideSelf();
+
+						game_server.emit("GAME_DESTROY_BLOCK", {
+							y: io.indexY,
+							x: io.indexX
+						});
 					}
 
 				} else if(io instanceof Hero) {
@@ -688,7 +695,8 @@ function draw() {
 					aa,
 					il * game.defaultSize - game.cameraPos.x,
 					ik * game.defaultSize,
-					il
+					il,
+					ik
 				));
 			});
 		});
