@@ -120,7 +120,7 @@ const models = {
 // Game data
 const game = {
 	initialized: false,
-	defaultSize: 0, // FIXME
+	defaultSize: 0,
 	player: {
 		speed: 5,
 		object: null
@@ -153,14 +153,8 @@ class Element {
 
 	predictTouch(x, y, size) { // FIXME
 		if(
-			(
-				(x + size > this.pos.x && x + size < this.pos.x + this.size) ||
-				(x < this.pos.x + size && x > this.pos.x)
-			) &&
-			(
-				(y + size > this.pos.y && y + size < this.pos.y + this.size) ||
-				(y < this.pos.y + size && y > this.pos.y)
-			)
+			(x + this.size - 5 >= this.pos.x) && (x <= this.pos.x + this.size - 5) &&
+			(y + this.size >= this.pos.y) && (y <= this.pos.y + this.size - 5)
 		) {
 			return this;
 		}
@@ -168,12 +162,14 @@ class Element {
 }
 
 class Block extends Element {
-	constructor(model, posX, posY) {
+	constructor(model, posX, posY, indexX) {
 		super(game.defaultSize, { x: posX, y: posY });
 
 		this.model = models[model].model;
 		this.secret = null;
 		this.modelName = model;
+
+		this.indexX = indexX;
 	}
 
 	render() {
@@ -185,6 +181,12 @@ class Block extends Element {
 			this.size,
 			this.size
 		);
+
+		return this;
+	}
+
+	update() {
+		this.pos.x = this.indexX * game.defaultSize - game.cameraPos.x;
 	}
 }
 
@@ -205,7 +207,7 @@ class Creature {
 	}
 
 	jump() {
-		if(!this.jumpQ) return;
+		// if(this.jumpQ <= 0) return; // DEBUG
 
 		this.velocity = -this.jumpHeight;
 		this.jumpQ--;
@@ -217,7 +219,7 @@ class Creature {
 			ny = this.pos.y + nv,
 			acn = false;
 
-		// Test every block for y axis
+		// Test each block for y axis
 		blocks.forEach(io => {
 			let a = io.predictTouch(
 				this.pos.x, 
@@ -231,16 +233,18 @@ class Creature {
 					this.velocity = 0;
 					this.jumpQ = this.jumpMaxQ;
 				}
-				// TODO: touches - if mainClient fire function that will apply effect and send new packet (data) to the game server
 			}
 		});
 
+		// IF doesn't touch THEN apply new y position
 		if(!acn) {
 			this.velocity = nv;
 			this.pos.y = ny;
 		}
 
 		// if(this.type === "hero") // send request
+
+		return this;
 	}
 	// Health, and other stuff for heros, monsters
 }
@@ -281,11 +285,40 @@ class MainPlayer extends Hero {
 
 		this.movementX = 0;
 		this.directionX = 1;
+
+		this.cameraStrictPosX = 0;
 	}
 
 	update() {
 		// TODO: Test touch position for x
-		this.pos.x += this.movementX * this.speed;
+
+		let nx = this.pos.x + this.movementX * this.speed,
+			acn = false;
+
+		blocks.forEach(io => {
+			let a = io.predictTouch(
+				nx,
+				this.pos.y,
+				nx
+			);
+
+			if(a) {
+				acn = true;
+			}
+		});
+
+		if(!acn) {
+			if(this.pos.x >= Math.ceil(width / 2)) {
+				// Update camera position
+				this.cameraStrictPosX += this.movementX * this.speed;
+				if(this.cameraStrictPosX < 0) this.cameraStrictPosX = 0;
+			}
+
+			// Update hero position
+			if(this.cameraStrictPosX <= 0) {
+				this.pos.x = nx;
+			}
+		}
 
 		return this;
 	}
@@ -313,6 +346,16 @@ class MainPlayer extends Hero {
 			break;
 			default:break;
 		}
+	}
+
+	moveCamera() {
+		if(this.pos.x >= Math.ceil(width / 2)) { // if client player x position bigger than half of the screen
+			game.cameraPos.x = this.cameraStrictPosX; // how many px from this pos?
+		}
+	}
+
+	sendServerPacket() { // OUT THE LOOP
+
 	}
 }
 
@@ -378,7 +421,8 @@ function draw() {
 				blocks.push(new Block(
 					aa,
 					il * game.defaultSize - game.cameraPos.x,
-					ik * game.defaultSize
+					ik * game.defaultSize,
+					il
 				));
 			});
 		});
@@ -386,11 +430,11 @@ function draw() {
 
 	// Render
 	blocks.forEach(io => {
-		io.render();
+		io.render().update();
 	});
 
 	// Client player
-	game.player.object.render().update().fall();
+	game.player.object.render().update().fall().moveCamera();
 }
 
 function keyPressed() {
