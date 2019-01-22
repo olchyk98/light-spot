@@ -115,6 +115,9 @@ const models = {
 		model: null,
 		secret: null
 	},
+	"ICEBALL_BULLET": {
+		model: null
+	}
 }
 
 // Game data
@@ -133,6 +136,7 @@ const game = {
 
 let blocks = [];
 let players = [];
+let bullets = [];
 
 // Game Server global reqs/res
 game_server.emit("READY_TO_PLAY_STATUS", true);
@@ -143,7 +147,8 @@ game_server.on("RESPONSE_GAME_DATA", data => {
 	players = data.players;
 });
 
-game_server.on("MANUAL_PLAYER_UPDATED", ({ player: { id, pos } }) => {
+// Player updated
+game_server.on("MANUAL_PLAYER_UPDATE", ({ player: { id, pos } }) => {
 	if(!game.map) return;
 
 	pos = { // CHECK
@@ -158,6 +163,30 @@ game_server.on("MANUAL_PLAYER_UPDATED", ({ player: { id, pos } }) => {
 		players.push({ id, pos });
 	}
 });
+
+// New bullet
+game_server.on("MANUAL_GAME_BULLET_ADDED", ({ bullet }) => {
+	// bullet -> [prop1, prop2, prop3]
+	// TODO: Convert to class and push it to the bullets array
+});
+
+// Player disconnected
+game_server.on("MANUAL_PLAYER_DISCONNECT", ({ id }) => {
+	let a = players.findIndex(io => io.id === id);
+	if(a !== -1) players.splice(a, 1);
+});
+
+// ...
+function _generateTrash(len = 32) {
+	let a = "abcdefghijklmnopqrstuvwxyz1234567890",
+		b = "";
+
+	for(let ma = 0; ma < len; ma++) {
+		b += a[floor(random(a.length))];
+	}
+
+	return b;
+}
 
 // Classes
 class Element {
@@ -208,13 +237,71 @@ class Block extends Element {
 	}
 }
 
-class Creature {
-	constructor(health, pos, model, size) {
-		this.health = health;
+class Bullet { // TODO: This class will check touchableElements array. Create it!.
+	constructor(pos, model, speed, id, dir) {
+		this.id = id;
+
+		this.pos = pos;
 		this.model = model;
 
-		this.size = size;
-		this.pos = pos;
+		this.speed = speed;
+		this.dir = dir;
+	}
+
+	render() {
+		image(
+			this.model,
+			this.pos.x,
+			this.pos.y
+		);
+
+		return this;
+	}
+
+	update() {
+		this.pos.x += this.dir * this.speed;
+
+		if(
+			(this.dir === 1 && this.pos.x > width) ||
+			(this.dir === -1 && this.pos.x + this.model.width < 0)
+		) this.spliceSelf();
+
+		return this;
+	}
+
+	spliceSelf() {
+		let a = bullets.findIndex(io => io.id === this.id);
+		if(!a) {
+			bullets.splice(a, 1);
+			// game_server.emit("GAME_BULLET_SPLICED", {
+			// 	bulletID: this.id
+			// });
+		}
+	}
+}
+
+class Iceball extends Bullet {
+	constructor(pos, id, dir) {
+		super(
+			pos,
+			models["ICEBALL_BULLET"].model,
+			10,
+			id,
+			dir
+		);
+	}
+
+	detectObstacles() {
+
+	}
+} 
+
+class Creature extends Element {
+	constructor(health, pos, model, size) {
+		super(size, pos);
+
+		this.maxHealth = this.health = health;
+		this.model = model;
 
 		this.gravity = .5;
 		this.velocity = 0;
@@ -285,7 +372,17 @@ class Hero extends Creature {
 			this.size
 		);
 
-		// TODO: Render health bar
+		{
+			let a = this.size * 1.25;
+
+			fill('red');
+			rect(
+				this.pos.x + this.size / 2 - a / 2,
+				this.pos.y - 15,
+				a / 100 * (100 / (this.maxHealth / this.health)),
+				10
+			);
+		}
 
 		return this;
 	}
@@ -295,7 +392,7 @@ class Hero extends Creature {
 class MainPlayer extends Hero {
 	constructor() {
 		super(
-			0,
+			null,
 			models["MAIN_PLAYER_MODEL"].model,
 			{ x: 50, y: 50 }, // DEBUG
 			true
@@ -305,10 +402,13 @@ class MainPlayer extends Hero {
 		this.directionX = 1;
 
 		this.cameraStrictPosX = 0;
+
+		this.shootDeltaC = 10;
+		this.shootDelta = 0;
 	}
 
 	update() {
-		// TODO: Test touch position for x
+		if(this.shootDelta > 0) this.shootDelta--;
 
 		let nx = this.pos.x + this.movementX * this.speed,
 			acn = false;
@@ -326,7 +426,7 @@ class MainPlayer extends Hero {
 		});
 
 		if(!acn) {
-			if(this.pos.x >= Math.ceil(width / 2)) {
+			if(this.pos.x >= ceil(width / 2)) {
 				// Update camera position
 				this.cameraStrictPosX += this.movementX * this.speed;
 				if(this.cameraStrictPosX < 0) this.cameraStrictPosX = 0;
@@ -339,6 +439,32 @@ class MainPlayer extends Hero {
 		}
 
 		return this;
+	}
+
+	shoot() {
+		if(this.shootDelta > 0) return;
+
+		// 1. Add bullet to the bullets array
+		// 2. Send info about the bullet to the game server
+
+		let a = [
+			{
+				x: this.pos.x,
+				y: this.pos.y
+			},
+			_generateTrash(),
+			this.directionX
+		]
+
+		this.shootDelta = this.shootDeltaC;
+
+		bullets.push(
+			new Iceball(...a)
+		);
+
+		game_server.emit("GAME_BULLET_ADDED", {
+			bullet: a
+		});
 	}
 
 	control(a, pressed) {
@@ -362,12 +488,15 @@ class MainPlayer extends Hero {
 					this.directionX = -1;	
 				}
 			break;
+			case 13:
+				if(pressed) this.shoot();
+			break;
 			default:break;
 		}
 	}
 
 	moveCamera() {
-		if(this.pos.x >= Math.ceil(width / 2)) { // if client player x position bigger than half of the screen
+		if(this.pos.x >= ceil(width / 2)) { // if client player x position bigger than half of the screen
 			game.cameraPos.x = this.cameraStrictPosX; // how many px from this pos?
 		}
 
@@ -416,6 +545,8 @@ function preload() {
 	models["EXCLAMATION_GOLD_BLOCK"].model  = loadImage('./models/blocks/19.png');
 	models["QUESTION_DARK_BLOCK"].model     = loadImage('./models/blocks/20.png');
 	models["QUESTION_LIGHT_BLOCK"].model    = loadImage('./models/blocks/21.png');
+
+	models["ICEBALL_BULLET"].model          = loadImage('./models/bullets/iceball.gif');
 }
 
 function setup() {
@@ -463,9 +594,13 @@ function draw() {
 		io.render().update();
 	});
 
+	// Render bullets
+	bullets.forEach(io => {
+		io.render().update().detectObstacles();
+	});
+
 	// Render other players
 	// IF players.length !== players.length with own class THEN generate classes for the new players
-	// It's sort of weird thing, but I have no idea how to sync players object. TODO: Sync by socketID!
 	if(players.length !== players.filter(io => io instanceof Hero)) {
 		players.forEach((io, ia, arr) => {
 			if(!(io instanceof Hero)) {

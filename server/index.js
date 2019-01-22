@@ -98,10 +98,6 @@ io.on('connection', socket => {
 
 	players.push(playObject);
 
-	// TODO: On player started game event!
-	// TODO: On player disconnected - splice
-	// TODO: [CLIENT] - Fix camera movement (pos - camerapos...)
-
 	// Send game data
 	socket.on("READY_TO_PLAY_STATUS", data => {
 		if(!data) return; // value is false
@@ -118,13 +114,27 @@ io.on('connection', socket => {
 	socket.on("UPDATE_PLAYER_STATS", data => {
 		playObject.pos = data.pos;
 
-		socket.broadcast.emit("MANUAL_PLAYER_UPDATED", { // FIXME: Don't spread to root client
+		socket.broadcast.emit("MANUAL_PLAYER_UPDATE", {
 			player: (({ id, pos }) => ({ id, pos }))(playObject)
+		});
+	});
+
+	// TODO: GAME_BULLET_ADDED
+	// DEPRECATED: GAME_BULLET_SPLICED
+
+	// Someone added a new active bullet
+	socket.on("GAME_BULLET_ADDED", data => {
+		socket.broadcast.emit("MANUAL_GAME_BULLET_ADDED", {
+			bullet: data.bullet
 		});
 	});
 
 	// Pull user on disconnect
 	socket.on('disconnect', () => {
+		socket.broadcast.emit("MANUAL_PLAYER_DISCONNECT", {
+			id: playObject.id
+		});
+
 		players.splice( players.findIndex(io => io.id === playObject.id) , 1)
 	});
 });
