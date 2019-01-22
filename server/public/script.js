@@ -1,3 +1,26 @@
+// ----- /*
+/*
+/*	Iceball > detectObstacles > touch tester -> It should send a new packet to the game server.
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+/*
+// ----- */
+
 // Game server
 const game_server = io('http://localhost:4000');
 
@@ -11,16 +34,19 @@ const models = {
 	},
 	"TOP_RIGHT_PIPE_BLOCK": {
 		markup: "b",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"TOP_FORK_PIPE_BLOCK": {
 		markup: "h",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"LEFT_FORK_PIPE_BLOCK": {
 		markup: "j",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
@@ -37,36 +63,43 @@ const models = {
 	},
 	"PIPE_BLOCK_VERT": {
 		markup: "g",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"PIPE_BLOCK_HORIZ": {
 		markup: "f",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"BOTTOM_FORK_PIPE_BLOCK": {
 		markup: "c",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"FORK_PIPE_BLOCK": {
 		markup: "i",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"BOTTOM_LEFT_PIPE_BLOCK": {
 		markup: "r",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"BOTTOM_RIGHT_PIPE_BLOCK": {
 		markup: "k",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
 	"RIGHT_FORK_PIPE_BLOCK": {
 		markup: "l",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
@@ -92,6 +125,7 @@ const models = {
 	},
 	"LEFT_TOP_PIPE_BLOCK": {
 		markup: "a",
+		style: "PIPE_STYLE",
 		model: null,
 		secret: null
 	},
@@ -122,6 +156,7 @@ const models = {
 
 // Game data
 const game = {
+	playerID: null,
 	initialized: false,
 	defaultSize: 0,
 	player: {
@@ -145,10 +180,11 @@ game_server.on("RESPONSE_GAME_DATA", data => {
 	game.initialized = true;
 	game.defaultSize = innerHeight / data.arrHeight; // // (innerHeight - 100) to add status dock
 	players = data.players;
+	game.playerID = data.playerID;
 });
 
 // Player updated
-game_server.on("MANUAL_PLAYER_UPDATE", ({ player: { id, pos } }) => {
+game_server.on("MANUAL_PLAYER_UPDATE", ({ player: { id, pos, health } }) => {
 	if(!game.map) return;
 
 	pos = { // CHECK
@@ -159,15 +195,26 @@ game_server.on("MANUAL_PLAYER_UPDATE", ({ player: { id, pos } }) => {
 	let a = players.find(io => io.id === id);
 	if(a) {
 		a.pos = pos;
+		a.health = health;
 	} else {
-		players.push({ id, pos });
+		players.push({ id, pos, health });
 	}
 });
 
 // New bullet
-game_server.on("MANUAL_GAME_BULLET_ADDED", ({ bullet }) => {
-	// bullet -> [prop1, prop2, prop3]
+game_server.on("MANUAL_GAME_BULLET_ADDED", ({ bullet, casterID }) => {
+	// bullet -> [{x:0,y:0}, prop2, prop3] // WARNING: x, y in %
 	// TODO: Convert to class and push it to the bullets array
+
+	bullet[0].x = game.map[0].length * game.defaultSize / 100 * bullet[0].x;
+	bullet[0].y = innerHeight / 100 * bullet[0].y;
+
+	bullets.push(
+		new Iceball(
+			...bullet,
+			casterID
+		)
+	);
 });
 
 // Player disconnected
@@ -199,6 +246,8 @@ class Element {
 	}
 
 	predictTouch(x, y, size) { // FIXME
+		if(this.visible === false) return null;
+
 		if(
 			(x + this.size - 5 >= this.pos.x) && (x <= this.pos.x + this.size - 5) &&
 			(y + this.size >= this.pos.y) && (y <= this.pos.y + this.size - 5)
@@ -212,15 +261,18 @@ class Block extends Element {
 	constructor(model, posX, posY, indexX) {
 		super(game.defaultSize, { x: posX, y: posY });
 
+		this.blockStyle = models[model].style;
 		this.model = models[model].model;
 		this.secret = null;
 		this.modelName = model;
 
 		this.indexX = indexX;
+		this.visible = true;
 	}
 
 	render() {
-		noStroke();
+		if(!this.visible) return this;
+
 		image(
 			this.model,
 			this.pos.x,
@@ -235,9 +287,13 @@ class Block extends Element {
 	update() {
 		this.pos.x = this.indexX * game.defaultSize - game.cameraPos.x;
 	}
+
+	hideSelf() {
+		this.visible = false;
+	}
 }
 
-class Bullet { // TODO: This class will check touchableElements array. Create it!.
+class Bullet {
 	constructor(pos, model, speed, id, dir) {
 		this.id = id;
 
@@ -273,15 +329,12 @@ class Bullet { // TODO: This class will check touchableElements array. Create it
 		let a = bullets.findIndex(io => io.id === this.id);
 		if(!a) {
 			bullets.splice(a, 1);
-			// game_server.emit("GAME_BULLET_SPLICED", {
-			// 	bulletID: this.id
-			// });
 		}
 	}
 }
 
 class Iceball extends Bullet {
-	constructor(pos, id, dir) {
+	constructor(pos, id, dir, casterID) {
 		super(
 			pos,
 			models["ICEBALL_BULLET"].model,
@@ -289,10 +342,48 @@ class Iceball extends Bullet {
 			id,
 			dir
 		);
+
+		this.casterID = casterID;
+		this.damage = 20;
 	}
 
 	detectObstacles() {
+		let a = [ // touchable elements
+			...blocks,
+			...players,
+			game.player.object
+		];
 
+		for(io of a) {
+			let b = io.predictTouch(
+				this.pos.x,
+				this.pos.y,
+				this.model.width
+			);
+
+			if(b) {
+				// I have no idea how to use switch-statement here... io.constructor.name is a bad idea, because it doesn't show e-classes.
+				let done = false;
+
+				if(io instanceof Block) {
+					done = true;
+					if(io.blockStyle === "PIPE_STYLE") {
+						io.hideSelf();
+					}
+
+				} else if(io instanceof Hero) {
+					if(this.casterID !== io.id) {
+						done = true;
+						io.declareDamage(this.damage);
+					}
+				}
+
+				if(done) {
+					this.spliceSelf();
+					break;
+				}
+			}
+		}
 	}
 } 
 
@@ -351,6 +442,10 @@ class Creature extends Element {
 
 		return this;
 	}
+
+	declareDamage(a) {
+		this.health -= a;
+	}
 	// Health, and other stuff for heros, monsters
 }
 
@@ -364,9 +459,11 @@ class Hero extends Creature {
 	}
 
 	render() {
+		let camera = (!this.cameraStrictPosX) ? game.player.object.cameraStrictPosX : 0;
+
 		image(
 			this.model,
-			this.pos.x - ((!this.cameraStrictPosX) ? game.player.object.cameraStrictPosX : 0),
+			this.pos.x - camera,
 			this.pos.y,
 			this.size,
 			this.size
@@ -377,7 +474,7 @@ class Hero extends Creature {
 
 			fill('red');
 			rect(
-				this.pos.x + this.size / 2 - a / 2,
+				this.pos.x + this.size / 2 - a / 2 - camera,
 				this.pos.y - 15,
 				a / 100 * (100 / (this.maxHealth / this.health)),
 				10
@@ -392,7 +489,7 @@ class Hero extends Creature {
 class MainPlayer extends Hero {
 	constructor() {
 		super(
-			null,
+			game.playerID,
 			models["MAIN_PLAYER_MODEL"].model,
 			{ x: 50, y: 50 }, // DEBUG
 			true
@@ -459,11 +556,18 @@ class MainPlayer extends Hero {
 		this.shootDelta = this.shootDeltaC;
 
 		bullets.push(
-			new Iceball(...a)
+			new Iceball(...a, game.playerID)
 		);
 
+		a[0] = {
+			x: 100 / ( (game.map[0].length * game.defaultSize) / (a[0].x + this.cameraStrictPosX) ),
+			y: 100 / (innerHeight / a[0].y)
+		}
+
+		console.log(game.playerID);
 		game_server.emit("GAME_BULLET_ADDED", {
-			bullet: a
+			bullet: a,
+			casterID: game.playerID
 		});
 	}
 
@@ -513,7 +617,8 @@ class MainPlayer extends Hero {
 			pos: {
 				x: 100 / ( (game.map[0].length * game.defaultSize) / (x + this.cameraStrictPosX) ), // XXX [1]
 				y: 100 / (innerHeight / y)
-			}
+			},
+			health: this.health
 		});
 	}
 }

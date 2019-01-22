@@ -106,26 +106,26 @@ io.on('connection', socket => {
 		socket.emit("RESPONSE_GAME_DATA", {
 			map,
 			arrHeight: map.length,
-			players: _getGamers(playObject.id)
+			players: _getGamers(playObject.id),
+			playerID: playObject.id
 		});
 	});
 
 	// Receive player position
 	socket.on("UPDATE_PLAYER_STATS", data => {
 		playObject.pos = data.pos;
+		playObject.health = data.health;
 
 		socket.broadcast.emit("MANUAL_PLAYER_UPDATE", {
-			player: (({ id, pos }) => ({ id, pos }))(playObject)
+			player: (({ id, pos, health }) => ({ id, pos, health }))(playObject)
 		});
 	});
-
-	// TODO: GAME_BULLET_ADDED
-	// DEPRECATED: GAME_BULLET_SPLICED
 
 	// Someone added a new active bullet
 	socket.on("GAME_BULLET_ADDED", data => {
 		socket.broadcast.emit("MANUAL_GAME_BULLET_ADDED", {
-			bullet: data.bullet
+			bullet: data.bullet,
+			casterID: data.casterID
 		});
 	});
 
