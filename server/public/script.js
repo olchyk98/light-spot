@@ -132,13 +132,31 @@ const game = {
 }
 
 let blocks = [];
+let players = [];
 
-// Request game data
+// Game Server global reqs/res
 game_server.emit("READY_TO_PLAY_STATUS", true);
 game_server.on("RESPONSE_GAME_DATA", data => {
 	game.map = data.map;
 	game.initialized = true;
 	game.defaultSize = innerHeight / data.arrHeight; // // (innerHeight - 100) to add status dock
+	players = data.players;
+});
+
+game_server.on("MANUAL_PLAYER_UPDATED", ({ player: { id, pos } }) => {
+	if(!game.map) return;
+
+	pos = { // CHECK
+		x: game.map[0].length * game.defaultSize / 100 * pos.x,
+		y: innerHeight / 100 * pos.y
+	}
+
+	let a = players.find(io => io.id === id);
+	if(a) {
+		a.pos = pos;
+	} else {
+		players.push({ id, pos });
+	}
 });
 
 // Classes
@@ -253,7 +271,7 @@ class Hero extends Creature {
 	constructor(id, model, pos, isClient) {
 		super(120, pos, model, game.defaultSize);
 
-		this.socketID = id;
+		this.id = id;
 		this.isClient = isClient;
 		this.speed = game.player.speed;
 	}
@@ -261,7 +279,7 @@ class Hero extends Creature {
 	render() {
 		image(
 			this.model,
-			this.pos.x,
+			this.pos.x - ((!this.cameraStrictPosX) ? game.player.object.cameraStrictPosX : 0),
 			this.pos.y,
 			this.size,
 			this.size
@@ -279,7 +297,7 @@ class MainPlayer extends Hero {
 		super(
 			0,
 			models["MAIN_PLAYER_MODEL"].model,
-			{ x: 50, y: 50 },
+			{ x: 50, y: 50 }, // DEBUG
 			true
 		);
 
@@ -352,10 +370,22 @@ class MainPlayer extends Hero {
 		if(this.pos.x >= Math.ceil(width / 2)) { // if client player x position bigger than half of the screen
 			game.cameraPos.x = this.cameraStrictPosX; // how many px from this pos?
 		}
+
+		return this;
 	}
 
-	sendServerPacket() { // OUT THE LOOP
+	updateServerStatus() { // OUT THE LOOP
+		// IDEA: Send position x-y in %
 
+		// Convert current client position to % to fix the different resolutions problem.
+		// XXX: [1] I don't think that it can happen, but different row lengths in the game.map array can cause(spruchunutu) some kind of errors.
+		const { x, y } = this.pos;
+		game_server.emit("UPDATE_PLAYER_STATS", {
+			pos: {
+				x: 100 / ( (game.map[0].length * game.defaultSize) / (x + this.cameraStrictPosX) ), // XXX [1]
+				y: 100 / (innerHeight / y)
+			}
+		});
 	}
 }
 
@@ -428,13 +458,33 @@ function draw() {
 		});
 	}
 
-	// Render
+	// Render blocks
 	blocks.forEach(io => {
 		io.render().update();
 	});
 
+	// Render other players
+	// IF players.length !== players.length with own class THEN generate classes for the new players
+	// It's sort of weird thing, but I have no idea how to sync players object. TODO: Sync by socketID!
+	if(players.length !== players.filter(io => io instanceof Hero)) {
+		players.forEach((io, ia, arr) => {
+			if(!(io instanceof Hero)) {
+				arr[ia] = new Hero(
+					io.id,
+					models["MAIN_PLAYER_MODEL"].model,
+					io.pos,
+					false
+				);
+			}
+		});
+	}
+
+	players.forEach(io => {
+		io.render();
+	});
+
 	// Client player
-	game.player.object.render().update().fall().moveCamera();
+	game.player.object.render().update().fall().moveCamera().updateServerStatus();
 }
 
 function keyPressed() {

@@ -80,25 +80,51 @@ const maps = [
 const players = [];
 const map = maps[0];
 
+// Easy methods
+function _getGamers(currentID) {
+	return players.filter(io => io.isPlaying && io.id !== currentID).map( ({ id, pos }) => ({ id, pos }) )
+}
+
 // Game process
 io.on('connection', socket => {
 	console.log(`User ${ socket.id } is connecting to the game server.`);
 
-	players.push({
+	let playObject = {
 		isPlaying: false,
 		id: socket.id,
-		socket
-	});
+		socket,
+		pos: { x: 60, y: 60 } // DEBUG
+	}
 
+	players.push(playObject);
+
+	// TODO: On player started game event!
+	// TODO: On player disconnected - splice
+	// TODO: [CLIENT] - Fix camera movement (pos - camerapos...)
+
+	// Send game data
 	socket.on("READY_TO_PLAY_STATUS", data => {
 		if(!data) return; // value is false
 
+		playObject.isPlaying = true;
 		socket.emit("RESPONSE_GAME_DATA", {
 			map,
-			arrHeight: map.length
-			// players
+			arrHeight: map.length,
+			players: _getGamers(playObject.id)
 		});
+	});
 
+	// Receive player position
+	socket.on("UPDATE_PLAYER_STATS", data => {
+		playObject.pos = data.pos;
 
-	})
+		socket.broadcast.emit("MANUAL_PLAYER_UPDATED", { // FIXME: Don't spread to root client
+			player: (({ id, pos }) => ({ id, pos }))(playObject)
+		});
+	});
+
+	// Pull user on disconnect
+	socket.on('disconnect', () => {
+		players.splice( players.findIndex(io => io.id === playObject.id) , 1)
+	});
 });
