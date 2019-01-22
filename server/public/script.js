@@ -122,7 +122,7 @@ const game = {
 	initialized: false,
 	defaultSize: 0, // FIXME
 	player: {
-		speed: 15,
+		speed: 5,
 		object: null
 	},
 	cameraPos: {
@@ -151,8 +151,19 @@ class Element {
 		}
 	}
 
-	predictTouch(x, y) {
-		alert();
+	predictTouch(x, y, size) { // FIXME
+		if(
+			(
+				(x + size > this.pos.x && x + size < this.pos.x + this.size) ||
+				(x < this.pos.x + size && x > this.pos.x)
+			) &&
+			(
+				(y + size > this.pos.y && y + size < this.pos.y + this.size) ||
+				(y < this.pos.y + size && y > this.pos.y)
+			)
+		) {
+			return this;
+		}
 	}
 }
 
@@ -185,13 +196,51 @@ class Creature {
 		this.size = size;
 		this.pos = pos;
 
-		this.gravity = 1;
+		this.gravity = .5;
 		this.velocity = 0;
+
+		this.jumpHeight = 10;
+		this.jumpMaxQ = 3;
+		this.jumpQ = 0;
+	}
+
+	jump() {
+		if(!this.jumpQ) return;
+
+		this.velocity = -this.jumpHeight;
+		this.jumpQ--;
 	}
 
 	fall() {
-		this.velocity += this.gravity;
-		this.pos.y += this.velocity;
+		// Next position
+		let nv = this.velocity + this.gravity,
+			ny = this.pos.y + nv,
+			acn = false;
+
+		// Test every block for y axis
+		blocks.forEach(io => {
+			let a = io.predictTouch(
+				this.pos.x, 
+				ny,
+				this.size
+			);
+
+			if(a) {
+				if(!acn) {
+					acn = true;
+					this.velocity = 0;
+					this.jumpQ = this.jumpMaxQ;
+				}
+				// TODO: touches - if mainClient fire function that will apply effect and send new packet (data) to the game server
+			}
+		});
+
+		if(!acn) {
+			this.velocity = nv;
+			this.pos.y = ny;
+		}
+
+		// if(this.type === "hero") // send request
 	}
 	// Health, and other stuff for heros, monsters
 }
@@ -203,7 +252,6 @@ class Hero extends Creature {
 		this.socketID = id;
 		this.isClient = isClient;
 		this.speed = game.player.speed;
-		this.controls = {};
 	}
 
 	render() {
@@ -214,6 +262,10 @@ class Hero extends Creature {
 			this.size,
 			this.size
 		);
+
+		// TODO: Render health bar
+
+		return this;
 	}
 	// Hero skills, stats
 }
@@ -226,10 +278,41 @@ class MainPlayer extends Hero {
 			{ x: 50, y: 50 },
 			true
 		);
+
+		this.movementX = 0;
+		this.directionX = 1;
 	}
 
-	control(keyCode, isPressed) {
-		this.controls[keyCode] = isPressed;
+	update() {
+		// TODO: Test touch position for x
+		this.pos.x += this.movementX * this.speed;
+
+		return this;
+	}
+
+	control(a, pressed) {
+		switch(parseInt(a)) {
+			case 32:
+				if(pressed) this.jump();
+			break;
+			case 68:
+				if(pressed) {
+					this.movementX = this.directionX = 1;
+				} else {
+					this.movementX = 0;
+					this.directionX = 1;	
+				}
+			break;
+			case 65:
+				if(pressed) {
+					this.movementX = this.directionX = -1;
+				} else {
+					this.movementX = 0;
+					this.directionX = -1;	
+				}
+			break;
+			default:break;
+		}
 	}
 }
 
@@ -264,6 +347,9 @@ function preload() {
 
 function setup() {
 	createCanvas(innerWidth - .5, innerHeight - .5);
+
+	// Initialize player
+	game.player.object = new MainPlayer();
 }
 
 function draw() {
@@ -276,37 +362,35 @@ function draw() {
 	// 	height
 	// );
 
-	// Clear arrays
-	blocks = [];
+	// Generate map
+	if(!blocks.length) {
+		game.map.forEach((io, ik) => { // XXX
+			io = io.split("");
 
-	// Fill arrays
-	game.map.forEach((io, ik) => { // XXX
-		io = io.split("");
+			io.forEach((ia, il) => {
+				ia = ia.toLowerCase();
 
-		io.forEach((ia, il) => {
-			ia = ia.toLowerCase();
+				if(ia === "o") return;
 
-			if(ia === "o") return;
+				let aa = Object.keys(models).find(io => models[io].markup === ia);
+				if(!aa) return;
 
-			let aa = Object.keys(models).find(io => models[io].markup === ia);
-			if(!aa) return;
-
-			blocks.push(new Block(
-				aa,
-				il * game.defaultSize - game.cameraPos.x,
-				ik * game.defaultSize
-			));
+				blocks.push(new Block(
+					aa,
+					il * game.defaultSize - game.cameraPos.x,
+					ik * game.defaultSize
+				));
+			});
 		});
-	});
+	}
 
 	// Render
 	blocks.forEach(io => {
 		io.render();
 	});
 
-	// Initialize client
-	game.player.object = new MainPlayer();
-	game.player.object.render();
+	// Client player
+	game.player.object.render().update().fall();
 }
 
 function keyPressed() {
