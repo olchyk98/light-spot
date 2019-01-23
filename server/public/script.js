@@ -23,15 +23,6 @@
 
 // --
 
-// "How to check if a number is between two values?"
-// https://stackoverflow.com/questions/14718561/how-to-check-if-a-number-is-between-two-values
-// David Thomas - Sep 18 13
-Number.prototype.isBetweenOrMore = function(a, b) {
-  const min = Math.min.apply(Math, [a, b]),
-  	   	max = Math.max.apply(Math, [a, b]);
-  return (this >= min && this <= max) || this > max;
-}
-
 // Game server
 const game_server = io('http://localhost:4000');
 // const game_server = io('http://192.168.43.45:4000');
@@ -542,7 +533,6 @@ class MainPlayer extends Hero {
 		});
 
 		if(!acn) {
-			// WARNING: isBetweenOrMore function was added manually to the Number proto
 			// WARNING: This function is a peace of shit. I'd kill this function in the night x_x
 			// According to https://www.linux.org.ru/forum/talks/3588892
 
