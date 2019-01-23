@@ -21,8 +21,20 @@
 /*
 // ----- */
 
+// --
+
+// "How to check if a number is between two values?"
+// https://stackoverflow.com/questions/14718561/how-to-check-if-a-number-is-between-two-values
+// David Thomas - Sep 18 13
+Number.prototype.isBetweenOrMore = function(a, b) {
+  const min = Math.min.apply(Math, [a, b]),
+  	   	max = Math.max.apply(Math, [a, b]);
+  return (this >= min && this <= max) || this > max;
+}
+
 // Game server
 const game_server = io('http://localhost:4000');
+// const game_server = io('http://192.168.43.45:4000');
 
 // Models
 const models = {
@@ -521,7 +533,7 @@ class MainPlayer extends Hero {
 			let a = io.predictTouch(
 				nx,
 				this.pos.y,
-				nx
+				nx // WARNING: was nx variable here
 			);
 
 			if(a) {
@@ -530,14 +542,28 @@ class MainPlayer extends Hero {
 		});
 
 		if(!acn) {
-			if(this.pos.x >= ceil(width / 2)) {
-				// Update camera position
+			// WARNING: isBetweenOrMore function was added manually to the Number proto
+			// WARNING: This function is a peace of shit. I'd kill this function in the night x_x
+			// According to https://www.linux.org.ru/forum/talks/3588892
+
+			let a = game.map[0].length * game.defaultSize - width / 2,
+				b = this.pos.x + this.cameraStrictPosX >= a - this.speed,
+				cameraChanged = false; // XXX
+
+			// Update camera position
+			if(
+				(
+					this.pos.x >= width / 2 ||
+					this.cameraStrictPosX
+				) &&
+				!b && (this.cameraStrictPosX + width / 2 <= a || this.movementX === -1)
+			) {
 				this.cameraStrictPosX += this.movementX * this.speed;
 				if(this.cameraStrictPosX < 0) this.cameraStrictPosX = 0;
+				cameraChanged = true;
 			}
 
-			// Update hero position
-			if(this.cameraStrictPosX <= 0) {
+			if(!cameraChanged || this.cameraStrictPosX <= 0) { // Update hero position
 				this.pos.x = nx;
 			}
 		}
@@ -571,7 +597,6 @@ class MainPlayer extends Hero {
 			y: 100 / (innerHeight / a[0].y)
 		}
 
-		console.log(game.playerID);
 		game_server.emit("GAME_BULLET_ADDED", {
 			bullet: a,
 			casterID: game.playerID
@@ -607,9 +632,11 @@ class MainPlayer extends Hero {
 	}
 
 	moveCamera() {
-		if(this.pos.x >= ceil(width / 2)) { // if client player x position bigger than half of the screen
-			game.cameraPos.x = this.cameraStrictPosX; // how many px from this pos?
-		}
+		// if(this.pos.x >= ceil(width / 2)) { // if client player x position bigger than half of the screen
+		// 	game.cameraPos.x = this.cameraStrictPosX; // how many px from this pos?
+		// }
+
+		game.cameraPos.x = this.cameraStrictPosX;
 
 		return this;
 	}
@@ -736,13 +763,13 @@ function draw() {
 }
 
 function keyPressed() {
-	if(!game.initialized) return;
+	if(!game.initialized || !game.player.object) return;
 
 	game.player.object.control(keyCode, true);
 }
 
 function keyReleased() {
-	if(!game.initialized) return;
+	if(!game.initialized || !game.player.object) return;
 
 	game.player.object.control(keyCode, false);
 }
