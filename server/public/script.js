@@ -21,7 +21,7 @@
 /*
 // ----- */
 
-// --
+// NEXT: Items
 
 // Game server
 const game_server = io('http://localhost:4000');
@@ -61,8 +61,7 @@ const models = {
 	"GOLD_BLOCK": {
 		markup: "e",
 		model: null,
-		secret: "HIDDEN_WALK", // secret label
-		secretDown: "DARK_BLOCK" // after the secret switch block to...
+		secret: null
 	},
 	"PIPE_BLOCK_VERT": {
 		markup: "g",
@@ -150,7 +149,7 @@ const models = {
 	"QUESTION_LIGHT_BLOCK": {
 		markup: "v",
 		model: null,
-		secret: null
+		secret: "HIDDEN_WALK"
 	},
 	"ICEBALL_BULLET": {
 		model: null
@@ -159,9 +158,18 @@ const models = {
 
 // Game data
 const game = {
+	canvasSizes: {
+		height: innerHeight,
+		width: innerWidth
+	},
+	g_sizes: {
+		height: null,
+		width: null
+	},
 	playerID: null,
 	initialized: false,
 	defaultSize: 0,
+	statsDockHeight: 100,
 	player: {
 		speed: 5,
 		object: null
@@ -181,7 +189,9 @@ game_server.emit("READY_TO_PLAY_STATUS", true);
 game_server.on("RESPONSE_GAME_DATA", data => {
 	game.map = data.map;
 	game.initialized = true;
-	game.defaultSize = innerHeight / data.arrHeight; // // (innerHeight - 100) to add status dock
+	game.g_sizes.height = game.canvasSizes.height - game.statsDockHeight;
+	game.g_sizes.width = game.canvasSizes.width;
+	game.defaultSize = game.g_sizes.height / data.arrHeight;
 	players = data.players;
 	game.playerID = data.playerID;
 });
@@ -192,7 +202,7 @@ game_server.on("MANUAL_PLAYER_UPDATE", ({ player: { id, pos, health } }) => {
 
 	pos = { // CHECK
 		x: game.map[0].length * game.defaultSize / 100 * pos.x,
-		y: innerHeight / 100 * pos.y
+		y: game.g_sizes.height / 100 * pos.y
 	}
 
 	let a = players.find(io => io.id === id);
@@ -210,7 +220,7 @@ game_server.on("MANUAL_GAME_BULLET_ADDED", ({ bullet, casterID }) => {
 	// TODO: Convert to class and push it to the bullets array
 
 	bullet[0].x = game.map[0].length * game.defaultSize / 100 * bullet[0].x;
-	bullet[0].y = innerHeight / 100 * bullet[0].y;
+	bullet[0].y = game.g_sizes.height / 100 * bullet[0].y;
 
 	bullets.push(
 		new Iceball(
@@ -266,7 +276,7 @@ class Block extends Element {
 
 		this.blockStyle = models[model].style;
 		this.model = models[model].model;
-		this.secret = null;
+		this.secret = models[model].secret;
 		this.modelName = model;
 
 		this.indexX = indexX;
@@ -290,6 +300,7 @@ class Block extends Element {
 	}
 
 	update() {
+		// Update block position when the camera moves
 		this.pos.x = this.indexX * game.defaultSize - game.cameraPos.x;
 	}
 
@@ -323,7 +334,7 @@ class Bullet {
 		this.pos.x += this.dir * this.speed;
 
 		if(
-			(this.dir === 1 && this.pos.x > width) ||
+			(this.dir === 1 && this.pos.x > game.g_sizes.width) ||
 			(this.dir === -1 && this.pos.x + this.model.width < 0)
 		) this.spliceSelf();
 
@@ -512,6 +523,9 @@ class MainPlayer extends Hero {
 
 		this.shootDeltaC = 10;
 		this.shootDelta = 0;
+
+		this.isFlying = false;
+		this.jetPackQuotaC = this.jetPackQuota = 300;
 	}
 
 	update() {
@@ -536,17 +550,17 @@ class MainPlayer extends Hero {
 			// WARNING: This function is a peace of shit. I'd kill this function in the night x_x
 			// According to https://www.linux.org.ru/forum/talks/3588892
 
-			let a = game.map[0].length * game.defaultSize - width / 2,
+			let a = game.map[0].length * game.defaultSize - game.g_sizes.width / 2,
 				b = this.pos.x + this.cameraStrictPosX >= a - this.speed,
 				cameraChanged = false; // XXX
 
 			// Update camera position
 			if(
 				(
-					this.pos.x >= width / 2 ||
+					this.pos.x >= game.g_sizes.width / 2 ||
 					this.cameraStrictPosX
 				) &&
-				!b && (this.cameraStrictPosX + width / 2 <= a || this.movementX === -1)
+				!b && (this.cameraStrictPosX + game.g_sizes.width / 2 <= a || this.movementX === -1)
 			) {
 				this.cameraStrictPosX += this.movementX * this.speed;
 				if(this.cameraStrictPosX < 0) this.cameraStrictPosX = 0;
@@ -558,7 +572,15 @@ class MainPlayer extends Hero {
 			}
 		}
 
+		if(this.isFlying) this.fly();
+
 		return this;
+	}
+
+	fly() {
+		if(!this.jetPackQuota) return;
+
+		this.velocity = -this.speed * 2;
 	}
 
 	shoot() {
@@ -584,7 +606,7 @@ class MainPlayer extends Hero {
 
 		a[0] = {
 			x: 100 / ( (game.map[0].length * game.defaultSize) / (a[0].x + this.cameraStrictPosX) ),
-			y: 100 / (innerHeight / a[0].y)
+			y: 100 / (game.g_sizes.height / a[0].y)
 		}
 
 		game_server.emit("GAME_BULLET_ADDED", {
@@ -596,6 +618,8 @@ class MainPlayer extends Hero {
 	control(a, pressed) {
 		switch(parseInt(a)) {
 			case 32:
+				// if(pressed) this.isFlying = true;
+				// else this.isFlying = false;
 				if(pressed) this.jump();
 			break;
 			case 68:
@@ -622,7 +646,7 @@ class MainPlayer extends Hero {
 	}
 
 	moveCamera() {
-		// if(this.pos.x >= ceil(width / 2)) { // if client player x position bigger than half of the screen
+		// if(this.pos.x >= ceil(game.g_sizes.width / 2)) { // if client player x position bigger than half of the screen
 		// 	game.cameraPos.x = this.cameraStrictPosX; // how many px from this pos?
 		// }
 
@@ -640,10 +664,72 @@ class MainPlayer extends Hero {
 		game_server.emit("UPDATE_PLAYER_STATS", {
 			pos: {
 				x: 100 / ( (game.map[0].length * game.defaultSize) / (x + this.cameraStrictPosX) ), // XXX [1]
-				y: 100 / (innerHeight / y)
+				y: 100 / (game.g_sizes.height / y)
 			},
 			health: this.health
 		});
+	}
+}
+
+class GameDock {
+	constructor() {
+		this.height = game.statsDockHeight;
+	}
+
+	render() {
+		{ // Render radar
+			let a = this.height * .85, // height
+				b = (width > 500) ? 300 : width * .5, // width
+				radX = width / 2 - b / 2,
+				radY = height - this.height + (this.height - a) / 2;
+
+			// NOTE: I could also render all blocks in the order, but it will be too heavy for computer
+			// Render display
+			fill('rgba(255, 255, 255, .15)');
+			rect(
+				radX,
+				radY,
+				b,
+				a
+			);
+
+			// Render dots
+				let c = 7.5, // size
+					e = e => radX + b / 100 * 100 / ((game.map[0].length * game.defaultSize) / e) + c / 2, // x
+					f = f => radY + a / 100 * 100 / (game.g_sizes.height / f); // y
+
+				{ // Render mainPlayer
+					const { pos, cameraStrictPosX } = game.player.object;
+
+					fill('red');
+					ellipse(
+						e(pos.x + cameraStrictPosX),
+						f(pos.y),
+						c, c
+					);
+				}
+
+				// Render players
+				players.forEach(io => {
+					if(!io.pos) return;
+
+					const { pos } = io;
+
+					fill('blue');
+					ellipse(
+						e(pos.x),
+						f(pos.y),
+						c, c
+					);
+				});
+		}
+
+		// ...
+		return this;
+	}
+
+	update() {
+
 	}
 }
 
@@ -679,10 +765,12 @@ function preload() {
 }
 
 function setup() {
-	createCanvas(innerWidth - .5, innerHeight - .5);
+	createCanvas(game.canvasSizes.width - .5, game.canvasSizes.height - .5);
 
 	// Initialize player
 	game.player.object = new MainPlayer();
+	// Initialize game dock
+	game.gameDock = new GameDock();
 }
 
 function draw() {
@@ -691,8 +779,8 @@ function draw() {
 	// image(
 	// 	models["MAIN_BACKGROUND"].model,
 	// 	0, 0,
-	// 	width,
-	// 	height
+	// 	game.g_sizes.width,
+	// 	game.g_sizes.height
 	// );
 
 	// Generate map
@@ -750,6 +838,9 @@ function draw() {
 
 	// Client player
 	game.player.object.render().update().fall().moveCamera().updateServerStatus();
+
+	// Game dock
+	game.gameDock.render();
 }
 
 function keyPressed() {
