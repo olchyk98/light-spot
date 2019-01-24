@@ -188,7 +188,7 @@ let bullets = [];
 game_server.emit("READY_TO_PLAY_STATUS", true);
 game_server.on("RESPONSE_GAME_DATA", data => {
 	game.map = data.map;
-	game.initialized = true;
+	// game.initialized = true; // FIXME
 	game.g_sizes.height = game.canvasSizes.height - game.statsDockHeight;
 	game.g_sizes.width = game.canvasSizes.width;
 	game.defaultSize = game.g_sizes.height / data.arrHeight;
@@ -217,7 +217,6 @@ game_server.on("MANUAL_PLAYER_UPDATE", ({ player: { id, pos, health } }) => {
 // New bullet
 game_server.on("MANUAL_GAME_BULLET_ADDED", ({ bullet, casterID }) => {
 	// bullet -> [{x:0,y:0}, prop2, prop3] // WARNING: x, y in %
-	// TODO: Convert to class and push it to the bullets array
 
 	bullet[0].x = game.map[0].length * game.defaultSize / 100 * bullet[0].x;
 	bullet[0].y = game.g_sizes.height / 100 * bullet[0].y;
@@ -258,7 +257,7 @@ class Element {
 		}
 	}
 
-	predictTouch(x, y, size) { // FIXME
+	predictTouch(x, y, size) {
 		if(this.visible === false) return null;
 
 		if(
@@ -774,73 +773,176 @@ function setup() {
 }
 
 function draw() {
-	background(0);
-	if(!game.initialized) return;
-	// image(
-	// 	models["MAIN_BACKGROUND"].model,
-	// 	0, 0,
-	// 	game.g_sizes.width,
-	// 	game.g_sizes.height
-	// );
+	if(!game.initialized) { // Party menu
+		// Draw background
+		image(
+			models["MAIN_BACKGROUND"].model,
+			0, 0,
+			game.canvasSizes.width,
+			game.canvasSizes.height
+		);
 
-	// Generate map
-	if(!blocks.length) {
-		game.map.forEach((io, ik) => { // XXX
-			io = io.split("");
+		// Draw party status
+		// IDEA: window that shows 4 slots for player and '[toggle]'join / leave button'[toggle]'
+		const slots = 4, // TODO: Server Array
+			  c = 35, // margin
+			  d = 50, // slot size
+			  a = slots * (c + d) + c, // width
+			  b = 215, // height
+			  e = game.canvasSizes.width / 2 - a / 2, // modal x
+			  f = game.canvasSizes.height / 2 - b / 2, // modal y
+			  g = 2, // button blink size
+			  h = 40; // control button height
 
-			io.forEach((ia, il) => {
-				ia = ia.toLowerCase();
+		// Modal
+		noStroke();
+		fill(150);
+		rect(e, f, a, b);
 
-				if(ia === "o") return;
+		// Slots row
+		for(let ma = 0; ma < slots; ma++) {
+			fill('#92CD41');
+			rect(
+				e + ma * d + (ma + 1) * c,
+				f + c / 2,
+				d,
+				d
+			);
+				
+			// bottom line
+			fill('rgba(255, 255, 255, .6)');
+			rect(
+				e + ma * d + (ma + 1) * c,
+				f + c / 2 + (d - g),
+				d,
+				g
+			);
 
-				let aa = Object.keys(models).find(io => models[io].markup === ia);
-				if(!aa) return;
-
-				blocks.push(new Block(
-					aa,
-					il * game.defaultSize - game.cameraPos.x,
-					ik * game.defaultSize,
-					il,
-					ik
-				));
-			});
-		});
-	}
-
-	// Render blocks
-	blocks.forEach(io => {
-		io.render().update();
-	});
-
-	// Render bullets
-	bullets.forEach(io => {
-		io.render().update().detectObstacles();
-	});
-
-	// Render other players
-	// IF players.length !== players.length with own class THEN generate classes for the new players
-	if(players.length !== players.filter(io => io instanceof Hero)) {
-		players.forEach((io, ia, arr) => {
-			if(!(io instanceof Hero)) {
-				arr[ia] = new Hero(
-					io.id,
-					models["MAIN_PLAYER_MODEL"].model,
-					io.pos,
-					false
-				);
+			// right line
+			fill('rgba(255, 255, 255, .6)');
+			rect(
+				e + ma * d + (ma + 1) * c + d,
+				f + c / 2,
+				g,
+				d
+			);
+		}
+		
+		[
+			{
+				text: "Ready",
+				action: null,
+				hidden: false,
+				active: true
+			},
+			{
+				text: "Start the game",
+				action: null,
+				hidden: false,
+				active: false
 			}
+		].forEach((io, ia) => {
+			if(io.hidden) return;
+
+			if(!io.active) fill('#E76E55');
+			else fill('#92CD41');
+
+			rect(
+				e + c,
+				f + c + d + ((c / 2 + h) * ia),
+				a - c * 2,
+				h
+			);
+
+			fill('rgba(255, 255, 255, .5)');
+			rect(
+				e + c,
+				f + c + d + ((c / 2 + h) * ia) + h,
+				a - c * 2,
+				g
+			);
+
+			fill('rgba(255, 255, 255, .5)');
+			rect(
+				e + c + a - c * 2 - g,
+				f + c + d + ((c / 2 + h) * ia),
+				g,
+				h
+			);
+
+			// TODO: Text Y align
+			textAlign(CENTER);
+			fill('white');
+			textSize(20);
+			text(
+				'Ready',
+				e + (a - c * 2) / 2 + c,
+				f + c + d + ((c / 2 + h * 2) * ia)
+			);
 		});
+
+	} else {
+		background(0);
+
+		// Generate map
+		if(!blocks.length) {
+			game.map.forEach((io, ik) => { // XXX
+				io = io.split("");
+
+				io.forEach((ia, il) => {
+					ia = ia.toLowerCase();
+
+					if(ia === "o") return;
+
+					let aa = Object.keys(models).find(io => models[io].markup === ia);
+					if(!aa) return;
+
+					blocks.push(new Block(
+						aa,
+						il * game.defaultSize - game.cameraPos.x,
+						ik * game.defaultSize,
+						il,
+						ik
+					));
+				});
+			});
+		}
+
+		// Render blocks
+		blocks.forEach(io => {
+			io.render().update();
+		});
+
+		// Render bullets
+		bullets.forEach(io => {
+			io.render().update().detectObstacles();
+		});
+
+		// Render other players
+		// IF players.length !== players.length with own class THEN generate classes for the new players
+		if(players.length !== players.filter(io => io instanceof Hero)) {
+			players.forEach((io, ia, arr) => {
+				if(!(io instanceof Hero)) {
+					arr[ia] = new Hero(
+						io.id,
+						models["MAIN_PLAYER_MODEL"].model,
+						io.pos,
+						false
+					);
+				}
+			});
+		}
+
+		players.forEach(io => {
+			io.render();
+		});
+
+		// Client player
+		game.player.object.render().update().fall().moveCamera().updateServerStatus();
+
+		// Game dock
+		game.gameDock.render();
 	}
-
-	players.forEach(io => {
-		io.render();
-	});
-
-	// Client player
-	game.player.object.render().update().fall().moveCamera().updateServerStatus();
-
-	// Game dock
-	game.gameDock.render();
 }
 
 function keyPressed() {
