@@ -85,6 +85,13 @@ function _getGamers(currentID) {
 	return players.filter(io => io.isPlaying && io.id !== currentID).map( ({ id, pos }) => ({ id, pos }) )
 }
 
+// Generate player position
+// function _getNextPos() {
+// 	if(players.length % 2) {
+// 		console.log("B");
+// 	}
+// }
+
 // Game process
 io.on('connection', socket => {
 	console.log(`User ${ socket.id } is connecting to the game server.`);
@@ -93,7 +100,7 @@ io.on('connection', socket => {
 		isPlaying: false,
 		id: socket.id,
 		socket,
-		pos: { x: 60, y: 60 } // DEBUG
+		pos: _getNextPos() // DEBUG
 	}
 
 	players.push(playObject);
@@ -107,7 +114,8 @@ io.on('connection', socket => {
 			map,
 			arrHeight: map.length,
 			players: _getGamers(playObject.id),
-			playerID: playObject.id
+			playerID: playObject.id,
+			// startPosition: 
 		});
 	});
 
